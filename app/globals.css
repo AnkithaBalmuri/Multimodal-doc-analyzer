@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #fffaf2;
+  color: #243042;
+}
+
+.dark body {
+  background: #111827;
+  color: #f8fafc;
+}
+
+::selection {
+  background: #ffd9e8;
+  color: #243042;
+}
