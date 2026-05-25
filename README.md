@@ -1,4 +1,4 @@
-# AI Multimodal Document Analyzer
+﻿# AI Multimodal Document Analyzer
 
 A beginner-friendly Next.js 14 web app that analyzes PDFs, DOCX files, TXT files, images, and PPTX presentations with AI.
 
@@ -12,6 +12,7 @@ The app does **not** use a database. Uploaded files are processed temporarily in
 - PDF, DOCX, TXT, PNG, JPG, JPEG, and PPTX support
 - OCR for image text extraction with `tesseract.js`
 - Groq AI-powered short summary, detailed summary, key points, and topics
+- LangSmith tracing for upload and AI analysis runs
 - Image description for image uploads
 - Word count and reading time estimate
 - Copy summary button
@@ -62,9 +63,10 @@ ai-multimodal-document-analyzer/
    - built-in text reading for TXT files
    - `tesseract.js` for image OCR
    - `jszip` for simple PPTX slide text extraction
-5. The extracted text is sent to Groq for analysis.
-6. The API returns clean JSON cards to the frontend.
-7. Nothing is saved to a database or permanent file storage.
+5. LangSmith records a trace for the upload pipeline and Groq model call.
+6. The extracted text is sent to Groq for analysis.
+7. The API returns clean JSON cards to the frontend.
+8. Nothing is saved to a database or permanent file storage.
 
 ## Install
 
@@ -80,11 +82,17 @@ Copy the example environment file:
 cp .env.local.example .env.local
 ```
 
-Then add your Groq API key:
+Then add your Groq and LangSmith API keys:
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_API_KEY=your_langsmith_api_key_here
+LANGSMITH_PROJECT=Multimodal-doc-analyzer
+LANGCHAIN_CALLBACKS_BACKGROUND=false
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
 You can change `GROQ_MODEL` to another Groq model that supports your file flow. For image uploads, use a Groq model that supports vision.
@@ -118,6 +126,12 @@ npm run build
 ```env
 GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_API_KEY=your_langsmith_api_key_here
+LANGSMITH_PROJECT=Multimodal-doc-analyzer
+LANGCHAIN_CALLBACKS_BACKGROUND=false
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
 6. Click **Deploy**.
@@ -148,4 +162,6 @@ git push -u origin main
 - `components/FileDropzone.jsx`: drag and drop upload flow
 - `app/api/analyze/route.js`: backend API route
 - `utils/server/fileExtractors.js`: document text extraction
-- `utils/server/groqAnalyzer.js`: Groq API call
+- `utils/server/groqAnalyzer.js`: Groq API call with LangSmith tracing
+
+

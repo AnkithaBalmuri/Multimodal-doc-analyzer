@@ -1,3 +1,5 @@
+﻿import { traceable } from "langsmith/traceable";
+
 function getAnalysisPrompt({ extractedText, fileName, fileTypeLabel, hasImage }) {
   return [
     "You are a kind AI study helper inside a beginner-friendly document analyzer.",
@@ -41,39 +43,60 @@ export async function analyzeWithGroq({ extractedText, fileName, fileTypeLabel, 
     });
   }
 
-  // AI analysis flow: send the extracted content to Groq's Chat Completions API.
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      "Content-Type": "application/json"
+  const requestBody = {
+    model,
+    messages: [
+      {
+        role: "user",
+        content
+      }
+    ],
+    temperature: 0.2,
+    response_format: { type: "json_object" }
+  };
+
+  const tracedGroqCompletion = traceable(async function groqDocumentAnalysis(traceInput) {
+    // AI analysis flow: send the extracted content to Groq's Chat Completions API.
+    // LangSmith receives the small traceInput object, not the uploaded file buffer or image base64.
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const message = data.error?.message || "Groq could not analyze this file.";
+      throw new Error(message);
+    }
+
+    const outputText = data.choices?.[0]?.message?.content;
+    if (!outputText) {
+      throw new Error("Groq returned an empty response. Please try again with a clearer file.");
+    }
+
+    return normalizeGroqResult(JSON.parse(outputText));
+  }, {
+    name: "Groq document analysis",
+    run_type: "llm",
+    metadata: {
+      provider: "groq",
+      project: process.env.LANGSMITH_PROJECT || "Multimodal-doc-analyzer"
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "user",
-          content
-        }
-      ],
-      temperature: 0.2,
-      response_format: { type: "json_object" }
-    })
+    tags: ["groq", "multimodal-document-analyzer"]
   });
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    const message = data.error?.message || "Groq could not analyze this file.";
-    throw new Error(message);
-  }
-
-  const outputText = data.choices?.[0]?.message?.content;
-  if (!outputText) {
-    throw new Error("Groq returned an empty response. Please try again with a clearer file.");
-  }
-
-  return normalizeGroqResult(JSON.parse(outputText));
+  return tracedGroqCompletion({
+    model,
+    fileName,
+    fileTypeLabel,
+    hasImage: Boolean(imageDataUrl),
+    extractedTextCharacters: extractedText.length
+  });
 }
 
 function normalizeGroqResult(result) {

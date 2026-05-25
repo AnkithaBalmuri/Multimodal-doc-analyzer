@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { traceable } from "langsmith/traceable";
 import {
   extractTextFromFile,
   getFileTypeLabel,
@@ -37,40 +38,58 @@ export async function POST(request) {
       );
     }
 
-    // Temporary file handling: the file becomes a Buffer in memory and is never written to disk.
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const extractedText = (await extractTextFromFile(file, buffer)).trim();
-
-    if (!isImageFile(file.name) && extractedText.length < 10) {
-      return NextResponse.json(
-        { error: "I could not find readable text in this document. Try a clearer file." },
-        { status: 422 }
-      );
-    }
-
-    const stats = getTextStats(extractedText);
     const fileTypeLabel = getFileTypeLabel(file.name);
-    const imageDataUrl = isImageFile(file.name)
-      ? `data:${file.type || "image/png"};base64,${buffer.toString("base64")}`
-      : null;
+    const hasImage = isImageFile(file.name);
 
-    const aiResult = await analyzeWithGroq({
-      extractedText: truncateForModel(extractedText),
+    const analyzeUploadedFile = traceable(async function analyzeUploadedFile(traceInput) {
+      // Temporary file handling: the file becomes a Buffer in memory and is never written to disk.
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const extractedText = (await extractTextFromFile(file, buffer)).trim();
+
+      if (!hasImage && extractedText.length < 10) {
+        throw new Error("I could not find readable text in this document. Try a clearer file.");
+      }
+
+      const stats = getTextStats(extractedText);
+      const imageDataUrl = hasImage
+        ? `data:${file.type || "image/png"};base64,${buffer.toString("base64")}`
+        : null;
+
+      const aiResult = await analyzeWithGroq({
+        extractedText: truncateForModel(extractedText),
+        fileName: file.name,
+        fileTypeLabel,
+        imageDataUrl
+      });
+
+      return {
+        fileName: file.name,
+        fileTypeLabel,
+        wordCount: stats.wordCount,
+        readingTime: stats.readingTime,
+        extractedTextPreview: extractedText.slice(0, 1200),
+        ...aiResult
+      };
+    }, {
+      name: "Analyze uploaded document",
+      run_type: "chain",
+      metadata: {
+        app: "AI Multimodal Document Analyzer",
+        project: process.env.LANGSMITH_PROJECT || "Multimodal-doc-analyzer"
+      },
+      tags: ["document-upload", "nextjs-api"]
+    });
+
+    const result = await analyzeUploadedFile({
       fileName: file.name,
+      fileSize: file.size,
       fileTypeLabel,
-      imageDataUrl
+      hasImage
     });
 
     // Deployment logic: return JSON only. Vercel serverless functions stay stateless and database-free.
-    return NextResponse.json({
-      fileName: file.name,
-      fileTypeLabel,
-      wordCount: stats.wordCount,
-      readingTime: stats.readingTime,
-      extractedTextPreview: extractedText.slice(0, 1200),
-      ...aiResult
-    });
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
       { error: error.message || "Something went wrong while analyzing the file." },
